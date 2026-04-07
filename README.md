@@ -17,6 +17,12 @@ This is part of my bigger project but some might find it useful. This example ba
 
 This example is based on ESP-BSP for m5stack tab5 with lvgl disabled (although it still is present in componenets) and uvc_host from ESP-IDF. Build on ESP-IDF v5.5.3
 
+Everything regarding m5stack tab5 needs to be set in menuconfig. PSRAM enabled, serial flash size 8-16mb etc.
+
+Display driver is ST7123
+
+Uvc device is Firebeetle esp32p4 with OV5647 IR-CUT camera 
+
 ## Known issues and limitations
 
 Currently no further testing for different resolutions than 320x240 @15fps, mjpeg, number of urbs and urb sizes needs to be adjusted for different resolutions.
