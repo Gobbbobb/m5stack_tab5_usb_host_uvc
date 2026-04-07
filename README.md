@@ -8,8 +8,8 @@
 This is part of my bigger project but some might find it useful. This example basically takes preview of camera and displays it on m5stack tab5 display. My camera as UVC DEVICE is esp32p4 with OV5647 camera, so basically these are two esp32p4 boards talking to eachother. Currently only mjpeg receiving is enabled. Further resolutions and formats need testing.
 
 </td><td width="200" valign="top">
-  <img src="/examples/display/doc/pic1.jpg">
-  <img src="/examples/display/doc/pic2.jpg">
+  <img src="/doc/pic1.jpg">
+  <img src="/doc/pic2.jpg">
 </td></tr>
 </table>
 
