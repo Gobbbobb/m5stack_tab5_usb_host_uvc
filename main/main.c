@@ -1,12 +1,3 @@
-/*
- * M5Stack Tab5 — UVC host: FireBeetle MJPEG 320x240@15fps → display
- *
- * FireBeetle ESP32-P4 streams MJPEG 320x240 @15fps, VID=0x303A PID=0x8000.
- * Tab5 BSP portrait: H_RES=720 (width), V_RES=1280 (height).
- *
- * sdkconfig.defaults must have:
- *   # CONFIG_UVC_CHECK_PAYLOAD_HEADER_EOH is not set
- */
 
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -23,30 +14,20 @@
 #include "usb/usb_host.h"
 #include "usb/uvc_host.h"
 
-#include "jpeg_decoder.h"   // ESP32-P4 hardware JPEG decoder
+#include "jpeg_decoder.h"
 
 static const char *TAG = "tab5_uvc";
 
-// ---- FireBeetle camera ----
 #define CAM_W    320
 #define CAM_H    240
 #define CAM_FPS   15
 #define JPEG_BUF  (64 * 1024)   // 64KB — safe ceiling for 320x240 MJPEG
 
-// ---- Display ----
-// BSP portrait: H_RES=720 (x-axis), V_RES=1280 (y-axis)
-// BUT: BSP has swap_xy active, so drawing (x, y, x+w, y+h) renders
-// with width along y-axis and height along x-axis.
-// To get a 320-wide × 240-tall rectangle appearing landscape:
-//   pass draw region as 240 in x-dimension, 320 in y-dimension.
-// Effective center: x=(720-240)/2=240  y=(1280-320)/2=480
 #define DISP_W   BSP_LCD_H_RES   // 720
 #define DISP_H   BSP_LCD_V_RES   // 1280
 #define DRAW_X   ((DISP_W - CAM_H) / 2)   // (720-240)/2 = 240
 #define DRAW_Y   ((DISP_H - CAM_W) / 2)   // (1280-320)/2 = 480
 
-// ---- USB ----
-// FireBeetle connects at FS (MPS=1023). 64 URBs × 1023 = 65KB buffer.
 #define NUM_URBS   16
 #define URB_SZ     1023 * 16
 
@@ -58,9 +39,6 @@ static QueueHandle_t         frame_q  = NULL;
 static uvc_host_stream_hdl_t g_stream = NULL;
 static bool                  g_running = false;
 
-// -------------------------------------------------------------------
-// UVC frame callback — just queue the JPEG frame
-// -------------------------------------------------------------------
 static bool frame_cb(const uvc_host_frame_t *frame, void *ctx)
 {
     static uint32_t n = 0;
@@ -75,9 +53,6 @@ static bool frame_cb(const uvc_host_frame_t *frame, void *ctx)
     return false;
 }
 
-// -------------------------------------------------------------------
-// Stream event callback
-// -------------------------------------------------------------------
 static void stream_event_cb(const uvc_host_stream_event_data_t *event, void *ctx)
 {
     switch (event->type) {
@@ -100,14 +75,10 @@ static void stream_event_cb(const uvc_host_stream_event_data_t *event, void *ctx
     }
 }
 
-// -------------------------------------------------------------------
-// Frame processing task — JPEG decode → draw_bitmap
-// -------------------------------------------------------------------
 static void frame_proc_task(void *arg)
 {
     esp_lcd_panel_handle_t panel = (esp_lcd_panel_handle_t)arg;
 
-    // RGB565 output buffer: 320×240×2 = 153600 bytes
     uint16_t *rgb = heap_caps_malloc(CAM_W * CAM_H * 2, MALLOC_CAP_SPIRAM);
     assert(rgb);
 
@@ -129,21 +100,18 @@ static void frame_proc_task(void *arg)
             ESP_LOGI(TAG, "FIRST FRAME: %d bytes", (int)frame->data_len);
         }
 
-        // Hardware JPEG decode → RGB565
         esp_jpeg_image_cfg_t cfg = {
             .indata       = frame->data,
             .indata_size  = frame->data_len,
             .outbuf       = (uint8_t *)rgb,
             .outbuf_size  = CAM_W * CAM_H * 2,
             .out_format   = JPEG_IMAGE_FORMAT_RGB565,
-            .flags        = { .swap_color_bytes = 1 },  // RGB565 byte swap for LCD
+            .flags        = { .swap_color_bytes = 1 }, 
         };
         esp_jpeg_image_output_t out = {0};
         esp_err_t ret = esp_jpeg_decode(&cfg, &out);
 
         if (ret == ESP_OK) {
-            // swap_xy is active in BSP: pass (CAM_H wide, CAM_W tall)
-            // so the image renders landscape on the portrait display
             esp_lcd_panel_draw_bitmap(panel,
                 DRAW_X, DRAW_Y,
                 DRAW_X + CAM_H,   // 240
@@ -167,9 +135,6 @@ static void frame_proc_task(void *arg)
     }
 }
 
-// -------------------------------------------------------------------
-// USB library task
-// -------------------------------------------------------------------
 static void usb_lib_task(void *arg)
 {
     while (1) {
@@ -180,14 +145,10 @@ static void usb_lib_task(void *arg)
     }
 }
 
-// -------------------------------------------------------------------
-// app_main
-// -------------------------------------------------------------------
 void app_main(void)
 {
     ESP_LOGI(TAG, "Tab5 UVC host — FireBeetle MJPEG 320x240@15fps");
 
-    // ---- Display ----
     esp_lcd_panel_handle_t    panel = NULL;
     esp_lcd_panel_io_handle_t io    = NULL;
     bsp_display_config_t disp_cfg = {
@@ -199,12 +160,10 @@ void app_main(void)
     ESP_ERROR_CHECK(bsp_display_new(&disp_cfg, &panel, &io));
     bsp_display_brightness_set(80);
 
-    // Black fill + red box at expected video location
     {
         size_t sz = (size_t)DISP_W * DISP_H * 2;
         uint16_t *fb = heap_caps_calloc(1, sz, MALLOC_CAP_SPIRAM);
         if (fb) {
-            // Red box: DRAW_X..DRAW_X+CAM_H wide, DRAW_Y..DRAW_Y+CAM_W tall
             for (int y = DRAW_Y; y < DRAW_Y + CAM_W; y++)
                 for (int x = DRAW_X; x < DRAW_X + CAM_H; x++)
                     fb[y * DISP_W + x] = 0xF800;
@@ -215,16 +174,13 @@ void app_main(void)
     ESP_LOGI(TAG, "Display %dx%d. Red box at (%d,%d)+(%d,%d)",
              DISP_W, DISP_H, DRAW_X, DRAW_Y, CAM_H, CAM_W);
 
-    // ---- USB-A power ----
     ESP_LOGI(TAG, "USB-A VBUS on...");
     ESP_ERROR_CHECK(bsp_feature_enable(BSP_FEATURE_USB, true));
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // ---- Resources ----
     frame_q = xQueueCreate(4, sizeof(uvc_host_frame_t *));
     assert(frame_q);
 
-    // ---- USB host ----
     const usb_host_config_t host_cfg = {
         .skip_phy_setup = false,
         .intr_flags     = ESP_INTR_FLAG_LEVEL1,
@@ -232,7 +188,6 @@ void app_main(void)
     ESP_ERROR_CHECK(usb_host_install(&host_cfg));
     xTaskCreate(usb_lib_task, "usb_lib", 4096, NULL, USB_HOST_PRIO, NULL);
 
-    // ---- UVC driver ----
     const uvc_host_driver_config_t uvc_cfg = {
         .driver_task_stack_size = 4 * 1024,
         .driver_task_priority   = UVC_DRV_PRIO,
@@ -241,12 +196,9 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(uvc_host_install(&uvc_cfg));
 
-    // ---- Frame task ----
     xTaskCreate(frame_proc_task, "frame_proc", 8 * 1024, (void *)panel,
                 FRAME_PROC_PRIO, NULL);
 
-    // ---- Stream config ----
-    // FireBeetle: VID=0x303A, PID=0x8000, MJPEG 320x240 @15fps FS (MPS=1023)
     const uvc_host_stream_config_t stream_cfg = {
         .event_cb  = stream_event_cb,
         .frame_cb  = frame_cb,
