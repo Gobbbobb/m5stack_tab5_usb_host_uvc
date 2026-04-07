@@ -1,0 +1,9 @@
+description: BSP Display example
+
+dependencies:
+  m5stack_tab5:
+    version: '*'
+    override_path: ../../../bsp/m5stack_tab5
+  espressif/usb_host_uvc: '*'
+  espressif/usb: '*'
+  espressif/esp_jpeg: "^1.2"
